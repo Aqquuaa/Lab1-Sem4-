@@ -18,7 +18,6 @@
             AdminList = JSONFileHelper.LoadAdmins();
             foreach (var admin in AdminList)
             {
-                Console.WriteLine(admin.getName());
                 if (admin.getName() == UserName
                     && admin.getPassword() == Password)
                 {

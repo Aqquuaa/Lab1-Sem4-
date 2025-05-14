@@ -5,9 +5,9 @@ namespace SmallDB
     public class Admin
     {
         [JsonPropertyName("username")]
-        private string username { get;}
+        public string username { get; set; }
         [JsonPropertyName("password")]
-        private string password { get; }
+        public string password { get; set; }
 
         public Admin() { }
         public string getName()
