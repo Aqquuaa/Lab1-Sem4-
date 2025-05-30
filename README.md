@@ -1,8 +1,10 @@
 
 **Лабораторна робота №1**
-DBTESTS - папка з unit tests
-docs - папка з документацією
-SmallDB - папка, в якій є: 
+
+ - DBTESTS - папка з unit tests
+ - docs - папка з документацією
+ - SmallDB - папка, в якій є:
+
   
 
  1. глосарій - Glossary.txt,
