@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace SmallDB
+namespace SmallDB.Data
 {
     public class Admin
     {
@@ -15,7 +15,7 @@ namespace SmallDB
             return username;
         }
         public string getPassword()
-        { 
+        {
             return password;
         }
     }

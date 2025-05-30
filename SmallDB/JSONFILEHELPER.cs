@@ -1,8 +1,9 @@
 ﻿using System.Text.Json;
+using SmallDB.Data;
 
 namespace SmallDB
 {
-    internal static class JSONFileHelper
+    public static class JSONFileHelper
     {
         const string UserFilePath = "users.json";
         const string TourFilePath = "tours.json";

@@ -1,21 +1,45 @@
-﻿namespace SmallDB
+﻿using SmallDB.BusinessLogic;
+using SmallDB.Data;
+using SmallDB.Services;
+
+namespace SmallDB
 {
+    /// <summary>
+    /// Console menu that drives the SmallDB application.
+    /// Handles admin login and dispatches to user/tour submenus.
+    /// </summary>
     internal class Menu
     {
+        private JsonStorageService<Admin> adminStorage = new JsonStorageService<Admin>("Data/admins.json");
+        private JsonStorageService<Tour> tourStorage = new JsonStorageService<Tour>("Data/tours.json");
+        private readonly UserService _userService;
+        private readonly TourService _tourService;
         private string UserName;
         private string Password;
         private User CurrentUser = new User("None");
         private Tour CurrentTour = new Tour("None");
-        private List<User> UserList;
-        private List<Tour> TourList;
         private List<Admin> AdminList;
+        /// <summary>
+        /// Starts the main menu (login + user/tour options).
+        /// </summary>
+        public Menu()
+        {
+            var _userStorage = new JsonStorageService<User>("Data/users.json");
+            var _tourStorage = new JsonStorageService<Tour>("Data/tours.json");
+
+            _userService = new UserService(_userStorage);
+            _tourService = new TourService(_tourStorage);
+        }
+        /// <summary>
+        /// Prompts and validates admin credentials against admins.json.
+        /// </summary>
         private bool Initialization()
         {
+            AdminList = adminStorage.Load();
             Console.WriteLine("Enter Username:");
             UserName = Console.ReadLine();
             Console.WriteLine("Enter Password:");
             Password = Console.ReadLine();
-            AdminList = JSONFileHelper.LoadAdmins();
             foreach (var admin in AdminList)
             {
                 if (admin.getName() == UserName
@@ -28,43 +52,57 @@
             Console.WriteLine("Invalid username or password.");
             return false;
         }
-        private void SelectCurrentType<T>(List<T> list)
+        /// <summary>
+        /// Generic helper that selects an item via a lookup function and assigns it.
+        /// </summary>
+        private void SelectItemByName<T>(Func<string, T?> selector, Action<T> assign)
+            where T : class
         {
-            string value = Console.ReadLine();
-            switch(list)
-            {
-                case List<User>:
-                    foreach (var users in UserList)
-                    {
-                        if (users.Username == value)
-                            CurrentUser = users;
-                    }
-                    break;
-                case List<Tour>:
-                    foreach (var tours in TourList)
-                    {
-                        if (tours.Name == value)
-                            CurrentTour = tours;
-                    }
-                    break;
-            }
+            Console.Write("Enter name: ");
+            var name = Console.ReadLine()?.Trim() ?? "";
 
+            var item = selector(name);
+            if (item != null)
+            {
+                assign(item);
+                Console.WriteLine($"Selected {typeof(T).Name}: {name}");
+            }
+            else
+            {
+                Console.WriteLine($"No {typeof(T).Name.ToLower()} found with name '{name}'.");
+            }
         }
+        /// <summary>
+        /// Helper that selects current user via a lookup function and assigns it.
+        /// </summary>
+        private void SelectCurrentUser()
+        {
+            SelectItemByName(_userService.ReturnUserByName, u => CurrentUser = u);
+        }
+        /// <summary>
+        /// Helper that selects current tour via a lookup function and assigns it.
+        /// </summary>
+        private void SelectCurrentTour()
+        {
+            SelectItemByName(_tourService.ReturnTourByName, t => CurrentTour = t);
+        }
+        /// <summary>
+        /// Adds a new user via console input and saves to storage.
+        /// </summary>
         private void AddUser()
         {
-            Console.WriteLine("Enter Username and Password for new user");
+            Console.WriteLine("Enter Username for new user");
             string username = Console.ReadLine();
+            Console.WriteLine("Enter Password for new user");
             string password = Console.ReadLine();
-            User user = new User(username.Trim(), password.Trim());
-            JSONFileHelper.AddUser(user);
-            UserList.Add(user);
+            _userService.AddUser(new User(username.Trim(), password.Trim()));
         }
-        private static void ShowList<T>(IEnumerable<T> list, Func<T, string> getName)
-        {
-            int i = 1;
-            foreach (var item in list)
-            Console.WriteLine($"{i++}. {getName(item)}");
-        }
+        /// <summary>
+        /// Attempts to parse an integer from a trimmed string input.
+        /// Prints error and returns -1 if parsing fails.
+        /// </summary>
+        /// <param name="value">User input string.</param>
+        /// <returns>Parsed integer or -1.</returns>
         private static int StringToInt(string value)
         {
             value = value.Trim();
@@ -76,59 +114,87 @@
             Console.WriteLine("Wrong input value");
             return -1;
         }
-        private void RemoveItemFromList<T>(List<T> list)
+        /// <summary>
+        /// Removes item of required type from a list, also it can perform required action on deletion
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="list">List from which element should be deleted</param>
+        /// <param name="predicate">A function that tests each element for a specific condition</param>
+        /// <param name="OnRemoved">Optional callback that is invoked after item deletion</param>
+        /// <example>
+        /// <code>
+        /// RemoveItemFromList
+        /// (UserList,
+        /// u => string.Equals(u.Username, CurrentUser.Username, StringComparison.OrdinalIgnoreCase),
+        /// () => CurrentUser = new User("None"));
+        /// </code>
+        /// </example>
+        private void RemoveItemFromList<T>(List<T> list,Func<T,bool> predicate, Action OnRemoved = null)
         {
-            switch (list)
-            {
-                case List<User> users:
-                    users.RemoveAll(u =>
-                        string.Equals(u.Username, CurrentUser.Username, StringComparison.OrdinalIgnoreCase));
-                    break;
-
-                case List<Tour> tours:
-                    tours.RemoveAll(t =>
-                        string.Equals(t.Name, CurrentTour.Name, StringComparison.OrdinalIgnoreCase));
-                    break;
-
-                default:
-                    throw new ArgumentException(
-                        "RemoveFromLocalList only supports List<User> or List<Tour>.", nameof(list));
-            }
+            int elementID = list.FindIndex(x => predicate(x));
+            if (elementID == -1)
+                return;
+            list.RemoveAt(elementID);
+            OnRemoved?.Invoke();
         }
-
+        /// <summary>
+        /// Removes the current user and resets selection if successful.
+        /// </summary>
         private void RemoveUser()
         {
-            JSONFileHelper.DeleteUser(CurrentUser.Username);
-            RemoveItemFromList(UserList);
-            CurrentUser = new User("None");
+            if (_userService.RemoveUser(CurrentUser))
+                CurrentUser = new User("None");
         }
+
+        /// <summary>
+        /// Removes the current tour and resets selection if successful.
+        /// </summary>
         private void RemoveTour()
         {
-            JSONFileHelper.DeleteTour(CurrentTour.Name);
-            RemoveItemFromList(TourList);
-            CurrentTour = new Tour("None");
+            if (_tourService.RemoveTour(CurrentTour))
+                CurrentTour = new Tour("None");
         }
+        /// <summary>
+        /// Adds funds to the current user's balance via user input.
+        /// </summary>
         private void AddMoney()
         {
             Console.WriteLine("Enter amount of money received");
             int value = StringToInt(Console.ReadLine());
             if (value > 0)
-                JSONFileHelper.AddMoneyToUser(CurrentUser.Username, value);
+            {
+                _userService.AddMoney(value, CurrentUser);
+            }
         }
+        /// <summary>
+        /// Updates the price of the current tour based on user input.
+        /// </summary>
         private void ChangeTourPrice()
         {
             Console.WriteLine("Set tour price");
             int value = StringToInt(Console.ReadLine());
             if (value > 0)
-                JSONFileHelper.EditTourPrice(CurrentTour.Name, value);
+            {
+                _tourService.ChangePrice(value,CurrentTour);
+            }
         }
+
+        /// <summary>
+        /// Updates the space (seats) of the current tour based on user input.
+        /// </summary>
         private void ChangeTourSpace()
         {
             Console.WriteLine("Set tour space");
             int value = StringToInt(Console.ReadLine());
             if (value > 0)
-                JSONFileHelper.EditTourSpace(CurrentTour.Name, value);
+            {
+                _tourService.ChangeSpace(value,CurrentTour);
+            }
         }
+
+        /// <summary>
+        /// Adds a new tour from console input and saves to storage.
+        /// </summary>
         private void AddTour()
         {
             Console.WriteLine("Enter tour name");
@@ -137,16 +203,25 @@
             string tPrice = Console.ReadLine();
             Console.WriteLine("Enter tour space amount");
             string tSize = Console.ReadLine();
-            Tour tour = new Tour(tName.Trim(), StringToInt(tPrice), StringToInt(tSize));
-            JSONFileHelper.AddTour(tour);
-            TourList.Add(tour);
+            _tourService.AddTour(new Tour(tName.Trim(), StringToInt(tPrice), StringToInt(tSize)));
 
         }
+
+        /// <summary>
+        /// Signs the current user up for the selected tour.
+        /// </summary>
         private void BuyTourForUser()
         {
-            if(CurrentTour.SignUser(CurrentUser))
-            JSONFileHelper.SaveUserTour(CurrentUser,CurrentTour.Name);
+            if(_userService.SignUser(CurrentUser, CurrentTour))
+            {
+                _tourService.SignUser(CurrentTour, CurrentUser);
+            }
         }
+        /// <summary>
+        /// Top-level menu that allows switching between user/tour management or exiting.
+        /// </summary>
+        /// <param name="input">User choice as a string.</param>
+        /// <returns>-1 if exit selected; otherwise 0.</returns>
         private int SecondMenu(string input)
         {
             int intInput = StringToInt(input);
@@ -164,6 +239,10 @@
             }
             return 0;
         }
+
+        /// <summary>
+        /// Displays and processes the user management menu.
+        /// </summary>
         private void UserOptions()
         {
             do
@@ -185,6 +264,9 @@
             while (UserMenu(Console.ReadLine()) != -1);
 
         }
+        /// <summary>
+        /// Displays and processes the tour management menu.
+        /// </summary>
         private void TourOptions()
         {
             do
@@ -202,16 +284,21 @@
             }
             while (TourMenu(Console.ReadLine()) != -1);
         }
+        /// <summary>
+        /// Processes a single tour menu command.
+        /// </summary>
+        /// <param name="input">User input string.</param>
+        /// <returns>-1 to exit; otherwise 0.</returns>
         private int TourMenu(string input)
         {
             int intInput = StringToInt(input);
             switch (intInput)
             {
                 case 1:
-                    ShowList(TourList, Tour => Tour.Name);
+                    _tourService.ShowAllTours();
                     break;
                 case 2:
-                    SelectCurrentType(TourList);
+                    SelectCurrentTour();
                     break;
                 case 3:
                     AddTour();
@@ -232,16 +319,21 @@
             }
             return 0;
         }
+        /// <summary>
+        /// Processes a single user menu command.
+        /// </summary>
+        /// <param name="input">User input string.</param>
+        /// <returns>-1 to exit; otherwise 0.</returns>
         private int UserMenu(string input)
         {
             int intInput = StringToInt(input);
             switch (intInput)
             {
                 case 1:
-                    ShowList(UserList, User => User.Username);
+                    _userService.ShowAllUsers();
                     break;
                 case 2:
-                    SelectCurrentType(UserList);
+                    SelectCurrentUser();
                     break;
                 case 3:
                     AddUser();
@@ -261,12 +353,13 @@
             }
             return 0;
         }
+        /// <summary>
+        /// Starts the main application menu after admin authentication.
+        /// </summary>
         public void MainMenu()
         {
-            if (Initialization())
+            if (Initialization())   
             {
-                UserList = JSONFileHelper.LoadUsers();
-                TourList = JSONFileHelper.LoadTours();
                 do
                 {
                     Console.WriteLine("----------");
